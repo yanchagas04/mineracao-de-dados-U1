@@ -1,0 +1,61 @@
+services:
+  # Oracle (Matriz / Origem)
+  oracle-db:
+    image: container-registry.oracle.com/database/express:21.3.0-xe
+    container_name: oracle-db
+    environment:
+      - ORACLE_PWD=cimatec
+    ports:
+      - "1521:1521"
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+    restart: always
+
+  # PostgreSQL - Filial Itabuna
+  postgres-itabuna:
+    image: postgres:16-alpine
+    container_name: postgres-itabuna
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: cimatec
+      POSTGRES_DB: petshop_itabuna
+    ports:
+      - "5435:5432"
+    volumes:
+      - pg-itabuna-data:/var/lib/postgresql/data
+    restart: always
+
+  # PostgreSQL - Banco Destino (Data Warehouse)
+  postgres-dw:
+    image: postgres:16-alpine
+    container_name: postgres-dw
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: cimatec
+      POSTGRES_DB: petshop_dw
+    ports:
+      - "5434:5432"
+    volumes:
+      - pg-dw-data:/var/lib/postgresql/data
+    restart: always
+
+  # MongoDB - Filial Feira de Santana
+  mongo-feira:
+    image: mongo:7.0
+    container_name: mongo-feira
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: cimatec
+      MONGO_INITDB_DATABASE: petshop_feira
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-feira-data:/data/db
+    restart: always
+
+volumes:
+  oracle-data:
+  pg-itabuna-data:
+  pg-filial-data:
+  pg-dw-data:
+  mongo-feira-data:
