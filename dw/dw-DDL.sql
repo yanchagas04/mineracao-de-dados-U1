@@ -59,10 +59,7 @@ CREATE TABLE fato_vendas (
 
 CREATE TABLE fato_vendas_concorrente (
     sk_tempo             INTEGER NOT NULL REFERENCES dim_tempo(sk_tempo),
-    sk_produto           INTEGER NOT NULL REFERENCES dim_produto(sk_produto),
-    sk_loja              INTEGER NOT NULL REFERENCES dim_loja(sk_loja),
-    quantidade_vendida   INTEGER NOT NULL,
-    valor_total_venda    NUMERIC(12,2) NOT NULL
+    valor                NUMERIC(12,2) NOT NULL
 );
 
 -- -----------------------------------------------------------------------------
