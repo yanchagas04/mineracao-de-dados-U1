@@ -109,10 +109,7 @@ CREATE TABLE STG_FEIRA_ITENS_PEDIDO (
 -- 4. CONCORRENTE (Origem: Excel)
 -- -----------------------------------------------------------------------------
 CREATE TABLE STG_CONCORRENTE_VENDAS (
-    DATA_VENDA         DATE,
-    CIDADE             VARCHAR2(100),
-    CATEGORIA          VARCHAR2(100),
-    NOME_PRODUTO       VARCHAR2(150),
-    QUANTIDADE         NUMBER(10),
-    VALOR_TOTAL        NUMBER(12,2)
+    ANO         NUMBER(4)     NOT NULL,
+    MES         VARCHAR2(10)  NOT NULL,
+    VENDAS      NUMBER(14,2)  NOT NULL
 );
