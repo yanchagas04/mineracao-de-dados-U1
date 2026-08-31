@@ -48,28 +48,34 @@ CREATE TABLE dim_loja (
 -- -----------------------------------------------------------------------------
 -- 3. TABELAS FATO (AGREGADAS POR MÊS)
 -- -----------------------------------------------------------------------------
+
 CREATE TABLE fato_vendas (
     sk_tempo             INTEGER NOT NULL REFERENCES dim_tempo(sk_tempo),
-    sk_cliente           INTEGER NOT NULL REFERENCES dim_cliente(sk_cliente),
-    sk_produto           INTEGER NOT NULL REFERENCES dim_produto(sk_produto),
-    sk_loja              INTEGER NOT NULL REFERENCES dim_loja(sk_loja),
-    quantidade_vendida   INTEGER NOT NULL,
-    valor_total_venda    NUMERIC(12,2) NOT NULL
+    sk_cliente            INTEGER NOT NULL REFERENCES dim_cliente(sk_cliente),
+    sk_produto            INTEGER NOT NULL REFERENCES dim_produto(sk_produto),
+    sk_loja               INTEGER NOT NULL REFERENCES dim_loja(sk_loja),
+    quantidade_vendida    INTEGER NOT NULL,
+    valor_total_venda     NUMERIC(12,2) NOT NULL,
+
+    CONSTRAINT pk_fato_vendas
+        PRIMARY KEY (sk_tempo, sk_cliente, sk_produto, sk_loja)
 );
 
 CREATE TABLE fato_vendas_concorrente (
     sk_tempo             INTEGER NOT NULL REFERENCES dim_tempo(sk_tempo),
-    valor                NUMERIC(12,2) NOT NULL
+    valor                 NUMERIC(12,2) NOT NULL,
+
+    CONSTRAINT pk_fato_vendas_concorrente
+        PRIMARY KEY (sk_tempo)
 );
 
 -- -----------------------------------------------------------------------------
 -- 4. ÍNDICES
 -- -----------------------------------------------------------------------------
+
 CREATE INDEX idx_fv_tempo   ON fato_vendas(sk_tempo);
 CREATE INDEX idx_fv_cliente ON fato_vendas(sk_cliente);
 CREATE INDEX idx_fv_produto ON fato_vendas(sk_produto);
 CREATE INDEX idx_fv_loja    ON fato_vendas(sk_loja);
 
 CREATE INDEX idx_fvc_tempo   ON fato_vendas_concorrente(sk_tempo);
-CREATE INDEX idx_fvc_produto ON fato_vendas_concorrente(sk_produto);
-CREATE INDEX idx_fvc_loja    ON fato_vendas_concorrente(sk_loja);
