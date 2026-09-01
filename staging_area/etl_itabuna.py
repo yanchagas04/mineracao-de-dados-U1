@@ -24,7 +24,7 @@ print("Conectado ao PostgreSQL Itabuna com sucesso!")
 # ============================================================
 
 oracle_conn = oracledb.connect(
-    user="SYSTEM",
+    user="C##SA",
     password="cimatec",
     dsn="localhost:1521/XE"
 )

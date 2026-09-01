@@ -5,28 +5,47 @@ import oracledb
 # CONFIGURAÇÃO
 # ============================================================
 
-ORACLE_USER = "SYSTEM"
-ORACLE_PASSWORD = "cimatec"
 ORACLE_HOST = "localhost"
 ORACLE_PORT = 1521
 ORACLE_SERVICE = "XE"
 
+SOURCE_USER = "C##PETSHOP"
+SOURCE_PASSWORD = "pet"
+
+STAGING_USER = "C##SA"
+STAGING_PASSWORD = "cimatec"
+
 
 # ============================================================
-# CONEXÃO
+# CONEXÃO - FONTE (C##PETSHOP)
 # ============================================================
 
 dsn = f"{ORACLE_HOST}:{ORACLE_PORT}/{ORACLE_SERVICE}"
 
+source_conn = oracledb.connect(
+    user=SOURCE_USER,
+    password=SOURCE_PASSWORD,
+    dsn=dsn
+)
+
+source_cursor = source_conn.cursor()
+
+print("Conectado ao Oracle Salvador (fonte) com sucesso!")
+
+
+# ============================================================
+# CONEXÃO - STAGING (C##SA)
+# ============================================================
+
 conn = oracledb.connect(
-    user=ORACLE_USER,
-    password=ORACLE_PASSWORD,
+    user=STAGING_USER,
+    password=STAGING_PASSWORD,
     dsn=dsn
 )
 
 cursor = conn.cursor()
 
-print("Conectado ao Oracle com sucesso!")
+print("Conectado ao Oracle Staging (C##SA) com sucesso!")
 
 
 # ============================================================
@@ -47,7 +66,7 @@ print("Staging Salvador limpo.")
 # 1. CLIENTES
 # ============================================================
 
-cursor.execute("""
+source_cursor.execute("""
     SELECT
         id_cliente,
         nome,
@@ -59,7 +78,7 @@ cursor.execute("""
     FROM clientes
 """)
 
-clientes = cursor.fetchall()
+clientes = source_cursor.fetchall()
 
 cursor.executemany("""
     INSERT INTO STG_SALVADOR_CLIENTES (
@@ -81,7 +100,7 @@ print(f"Clientes carregados: {len(clientes)}")
 # 2. PRODUTOS
 # ============================================================
 
-cursor.execute("""
+source_cursor.execute("""
     SELECT
         p.id_produto,
         p.nome,
@@ -92,7 +111,7 @@ cursor.execute("""
         ON c.id_categoria = p.id_categoria
 """)
 
-produtos = cursor.fetchall()
+produtos = source_cursor.fetchall()
 
 cursor.executemany("""
     INSERT INTO STG_SALVADOR_PRODUTOS (
@@ -111,7 +130,7 @@ print(f"Produtos carregados: {len(produtos)}")
 # 3. VENDAS
 # ============================================================
 
-cursor.execute("""
+source_cursor.execute("""
     SELECT
         v.id_venda,
         v.id_cliente,
@@ -126,7 +145,7 @@ cursor.execute("""
         v.data_venda
 """)
 
-vendas = cursor.fetchall()
+vendas = source_cursor.fetchall()
 
 cursor.executemany("""
     INSERT INTO STG_SALVADOR_VENDAS (
@@ -145,7 +164,7 @@ print(f"Vendas carregadas: {len(vendas)}")
 # 4. ITENS DE VENDA
 # ============================================================
 
-cursor.execute("""
+source_cursor.execute("""
     SELECT
         id_item,
         id_venda,
@@ -155,7 +174,7 @@ cursor.execute("""
     FROM itens_venda
 """)
 
-itens = cursor.fetchall()
+itens = source_cursor.fetchall()
 
 cursor.executemany("""
     INSERT INTO STG_SALVADOR_ITENS_VENDA (
@@ -178,6 +197,9 @@ print(f"Itens carregados: {len(itens)}")
 conn.commit()
 
 print("\nETL Salvador concluído com sucesso!")
+
+source_cursor.close()
+source_conn.close()
 
 cursor.close()
 conn.close()

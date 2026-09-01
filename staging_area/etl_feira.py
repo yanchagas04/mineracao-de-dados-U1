@@ -2,18 +2,33 @@ import oracledb
 
 
 # ============================================================
-# CONEXÃO COM ORACLE
+# CONEXÃO COM ORACLE - FONTE (C##FEIRA)
+# ============================================================
+
+source_conn = oracledb.connect(
+    user="C##FEIRA",
+    password="cimatec",
+    dsn="localhost:1521/XE"
+)
+
+source_cursor = source_conn.cursor()
+
+print("Conectado ao Oracle Feira (fonte) com sucesso!")
+
+
+# ============================================================
+# CONEXÃO COM ORACLE - STAGING (C##SA)
 # ============================================================
 
 oracle_conn = oracledb.connect(
-    user="SYSTEM",
+    user="C##SA",
     password="cimatec",
     dsn="localhost:1521/XE"
 )
 
 oracle_cursor = oracle_conn.cursor()
 
-print("Conectado ao Oracle com sucesso!")
+print("Conectado ao Oracle Staging (C##SA) com sucesso!")
 
 
 # ============================================================
@@ -34,7 +49,7 @@ print("Staging Feira limpo.")
 # CLIENTES
 # ============================================================
 
-oracle_cursor.execute("""
+source_cursor.execute("""
     SELECT
         ID_CLIENTE,
         NOME,
@@ -43,10 +58,10 @@ oracle_cursor.execute("""
         SEXO,
         ESTADO_CIVIL,
         DATA_NASCIMENTO
-    FROM FEIRA_CLIENTES
+    FROM CLIENTES
 """)
 
-clientes = oracle_cursor.fetchall()
+clientes = source_cursor.fetchall()
 
 oracle_cursor.executemany("""
     INSERT INTO STG_FEIRA_CLIENTES (
@@ -68,16 +83,16 @@ print(f"Clientes carregados: {len(clientes)}")
 # PRODUTOS
 # ============================================================
 
-oracle_cursor.execute("""
+source_cursor.execute("""
     SELECT
         ID_PRODUTO,
         NOME_PRODUTO,
         CATEGORIA,
         PRECO
-    FROM FEIRA_PRODUTOS
+    FROM PRODUTOS
 """)
 
-produtos = oracle_cursor.fetchall()
+produtos = source_cursor.fetchall()
 
 oracle_cursor.executemany("""
     INSERT INTO STG_FEIRA_PRODUTOS (
@@ -96,16 +111,16 @@ print(f"Produtos carregados: {len(produtos)}")
 # PEDIDOS
 # ============================================================
 
-oracle_cursor.execute("""
+source_cursor.execute("""
     SELECT
         ID_PEDIDO,
         ID_CLIENTE,
         DATA_PEDIDO,
         VALOR_TOTAL
-    FROM FEIRA_PEDIDOS
+    FROM PEDIDOS
 """)
 
-pedidos = oracle_cursor.fetchall()
+pedidos = source_cursor.fetchall()
 
 oracle_cursor.executemany("""
     INSERT INTO STG_FEIRA_PEDIDOS (
@@ -124,7 +139,7 @@ print(f"Pedidos carregados: {len(pedidos)}")
 # ITENS DOS PEDIDOS
 # ============================================================
 
-oracle_cursor.execute("""
+source_cursor.execute("""
     SELECT
         ID_ITEM,
         ID_PEDIDO,
@@ -133,10 +148,10 @@ oracle_cursor.execute("""
         CATEGORIA,
         PRECO_UNITARIO,
         QUANTIDADE
-    FROM FEIRA_ITENS_PEDIDO
+    FROM ITENS_PEDIDO
 """)
 
-itens = oracle_cursor.fetchall()
+itens = source_cursor.fetchall()
 
 oracle_cursor.executemany("""
     INSERT INTO STG_FEIRA_ITENS_PEDIDO (
@@ -164,8 +179,11 @@ print("\nETL Feira concluído com sucesso!")
 
 
 # ============================================================
-# FECHAR CONEXÃO
+# FECHAR CONEXÕES
 # ============================================================
+
+source_cursor.close()
+source_conn.close()
 
 oracle_cursor.close()
 oracle_conn.close()
