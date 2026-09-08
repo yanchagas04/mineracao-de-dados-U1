@@ -1,9 +1,9 @@
 -- -----------------------------------------------------------------------------
 -- 1. DIMENSÃO TEMPO (QUADRIMESTRAL / ANUAL)
--- SK_TEMPO no formato YYYYQ (ex: 20241 para 1º Quadrimestre/2024)
+-- SK_TEMPO como sequência numérica sequencial (1, 2, 3, 4, 5, 6)
 -- -----------------------------------------------------------------------------
 CREATE TABLE dim_tempo (
-    sk_tempo             INTEGER PRIMARY KEY, -- YYYYQ (ex: 20241, 20242, 20243)
+    sk_tempo             SERIAL PRIMARY KEY, -- Sequência numérica (1 a 6)
     ano                  INTEGER NOT NULL,
     quadrimestre         INTEGER NOT NULL     -- 1, 2 ou 3
 );
@@ -33,7 +33,7 @@ CREATE TABLE dim_loja (
 );
 
 -- -----------------------------------------------------------------------------
--- 3. TABELAS FATO (AGREGADAS POR MÊS)
+-- 3. TABELAS FATO
 -- -----------------------------------------------------------------------------
 
 CREATE TABLE fato_vendas (

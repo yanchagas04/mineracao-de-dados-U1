@@ -2,6 +2,13 @@ import psycopg2
 from psycopg2.extras import execute_values
 import oracledb
 import unicodedata
+import sys
+
+if sys.stdout.encoding != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 
 # ============================================================
 # CONFIGURAÇÕES DE CONEXÃO
@@ -55,16 +62,19 @@ print("✓ Tabelas do DW truncadas com sucesso.")
 # ============================================================
 # 3. CARGA DA DIMENSÃO TEMPO (dim_tempo)
 # Granularidade Quadrimestral e Anual cobrindo 2024 e 2025 (6 registros)
-# SK_TEMPO no formato YYYYQ (ex: 20241 para 1º Quadrimestre/2024)
+# SK_TEMPO como sequência numérica sequencial (1 a 6)
 # ============================================================
 
 print("\n--- CARGA: dim_tempo (QUADRIMESTRAL) ---")
 
-tempo_records = []
-for ano in [2024, 2025]:
-    for quad in [1, 2, 3]:
-        sk_tempo = ano * 10 + quad
-        tempo_records.append((sk_tempo, ano, quad))
+tempo_records = [
+    (1, 2024, 1),
+    (2, 2024, 2),
+    (3, 2024, 3),
+    (4, 2025, 1),
+    (5, 2025, 2),
+    (6, 2025, 3),
+]
 
 execute_values(pg_cur, """
     INSERT INTO dim_tempo (sk_tempo, ano, quadrimestre)
@@ -72,7 +82,10 @@ execute_values(pg_cur, """
 """, tempo_records)
 pg_conn.commit()
 
-print(f"✓ {len(tempo_records)} registros carregados em dim_tempo (2024 a 2025).")
+# Mapa em memória: (ano, quadrimestre) -> sk_tempo (1 a 6)
+tempo_map = {(ano, quad): sk for sk, ano, quad in tempo_records}
+
+print(f"✓ {len(tempo_records)} registros carregados em dim_tempo (sequência numérica 1 a 6).")
 
 
 # ============================================================
@@ -216,14 +229,15 @@ print(f"✓ Total em dim_produto: {len(dados_insercao_produtos)} produtos único
 
 
 # ============================================================
+# ============================================================
 # 7. CARGA DA TABELA FATO DE VENDAS (fato_vendas)
-# Agregação por: sk_tempo (quadrimestre), sk_estado_civil, sk_produto, sk_loja
-# Granularidade quadrimestral e anual, minimizando o DW
+# Apenas tuplas com vendas efetivas (SEM ZERO)
 # ============================================================
 
-print("\n--- CARGA: fato_vendas (AGREGADA QUADRIMESTRAL) ---")
+print("\n--- CARGA: fato_vendas (SEM ZERO) ---")
 
 fato_registros = {}
+total_itens_processados = 0
 
 # 7.1 Salvador
 sk_loja_ssa = loja_map["Salvador"]
@@ -238,19 +252,20 @@ oracle_cur.execute("""
     FROM STG_SALVADOR_VENDAS v
     JOIN STG_SALVADOR_ITENS_VENDA i ON v.ID_VENDA = i.ID_VENDA
 """)
-for ano, mes, bk_cli, bk_prod, qtd, vlr in oracle_cur.fetchall():
+rows_ssa = oracle_cur.fetchall()
+total_itens_processados += len(rows_ssa)
+for ano, mes, bk_cli, bk_prod, qtd, vlr in rows_ssa:
     quad = (int(mes) - 1) // 4 + 1
-    sk_tempo = int(ano) * 10 + quad
+    sk_tempo = tempo_map[(int(ano), quad)]
     sk_ec = cliente_sk_ec_map.get((bk_cli, "Salvador"))
     sk_prod = produto_map.get((bk_prod, "Salvador"))
     chave = (sk_tempo, sk_ec, sk_prod, sk_loja_ssa)
-    
     if chave not in fato_registros:
         fato_registros[chave] = [0, 0.0]
     fato_registros[chave][0] += qtd
     fato_registros[chave][1] += float(vlr)
 
-print(f"  [Salvador] Processado.")
+print(f"  [Salvador] {len(rows_ssa)} itens processados.")
 
 # 7.2 Itabuna
 sk_loja_ita = loja_map["Itabuna"]
@@ -265,19 +280,20 @@ oracle_cur.execute("""
     FROM STG_ITABUNA_VENDAS v
     JOIN STG_ITABUNA_ITENS_VENDA i ON v.ID_VENDA = i.ID_VENDA
 """)
-for ano, mes, bk_cli, bk_prod, qtd, vlr in oracle_cur.fetchall():
+rows_ita = oracle_cur.fetchall()
+total_itens_processados += len(rows_ita)
+for ano, mes, bk_cli, bk_prod, qtd, vlr in rows_ita:
     quad = (int(mes) - 1) // 4 + 1
-    sk_tempo = int(ano) * 10 + quad
+    sk_tempo = tempo_map[(int(ano), quad)]
     sk_ec = cliente_sk_ec_map.get((bk_cli, "Itabuna"))
     sk_prod = produto_map.get((bk_prod, "Itabuna"))
     chave = (sk_tempo, sk_ec, sk_prod, sk_loja_ita)
-    
     if chave not in fato_registros:
         fato_registros[chave] = [0, 0.0]
     fato_registros[chave][0] += qtd
     fato_registros[chave][1] += float(vlr)
 
-print(f"  [Itabuna] Processado.")
+print(f"  [Itabuna] {len(rows_ita)} itens processados.")
 
 # 7.3 Feira de Santana
 sk_loja_fsa = loja_map["Feira de Santana"]
@@ -292,24 +308,26 @@ oracle_cur.execute("""
     FROM STG_FEIRA_PEDIDOS p
     JOIN STG_FEIRA_ITENS_PEDIDO i ON p.ID_PEDIDO = i.ID_PEDIDO
 """)
-for ano, mes, bk_cli, bk_prod, qtd, vlr in oracle_cur.fetchall():
+rows_fsa = oracle_cur.fetchall()
+total_itens_processados += len(rows_fsa)
+for ano, mes, bk_cli, bk_prod, qtd, vlr in rows_fsa:
     quad = (int(mes) - 1) // 4 + 1
-    sk_tempo = int(ano) * 10 + quad
+    sk_tempo = tempo_map[(int(ano), quad)]
     sk_ec = cliente_sk_ec_map.get((bk_cli, "Feira"))
     sk_prod = produto_map.get((bk_prod, "Feira"))
     chave = (sk_tempo, sk_ec, sk_prod, sk_loja_fsa)
-    
     if chave not in fato_registros:
         fato_registros[chave] = [0, 0.0]
     fato_registros[chave][0] += qtd
     fato_registros[chave][1] += float(vlr)
 
-print(f"  [Feira de Santana] Processado.")
+print(f"  [Feira de Santana] {len(rows_fsa)} itens processados.")
 
-# Prepara tuplas para inserção em lote
+# Prepara tuplas para inserção em lote (apenas vendas efetivas, sem zero)
 fato_rows = [
     (k[0], k[1], k[2], k[3], v[0], round(v[1], 2))
-    for k, v in fato_registros.items()
+    for k, v in sorted(fato_registros.items())
+    if v[0] > 0
 ]
 
 execute_values(pg_cur, """
@@ -318,7 +336,7 @@ execute_values(pg_cur, """
 """, fato_rows, page_size=2000)
 pg_conn.commit()
 
-print(f"✓ Total em fato_vendas: {len(fato_rows)} registros agregados carregados.")
+print(f"✓ Total em fato_vendas: {len(fato_rows)} registros carregados (SEM ZERO).")
 
 
 # ============================================================
@@ -346,7 +364,7 @@ for ano, mes_sigla, valor in rows_concorrente:
     num_mes = mapa_meses_sigla.get(mes_sigla.strip().lower())
     if num_mes:
         quad = (num_mes - 1) // 4 + 1
-        sk_tempo = ano * 10 + quad
+        sk_tempo = tempo_map[(ano, quad)]
         concorrente_agg[sk_tempo] = concorrente_agg.get(sk_tempo, 0.0) + float(valor)
 
 concorrente_rows = [
