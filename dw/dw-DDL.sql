@@ -1,39 +1,26 @@
 -- -----------------------------------------------------------------------------
--- 1. DIMENSÃO TEMPO (MENSAL)
--- SK_TEMPO no formato YYYYMM (ex: 202501 para Jan/2025)
+-- 1. DIMENSÃO TEMPO (QUADRIMESTRAL / ANUAL)
+-- SK_TEMPO no formato YYYYQ (ex: 20241 para 1º Quadrimestre/2024)
 -- -----------------------------------------------------------------------------
 CREATE TABLE dim_tempo (
-    sk_tempo             INTEGER PRIMARY KEY, -- YYYYMM
+    sk_tempo             INTEGER PRIMARY KEY, -- YYYYQ (ex: 20241, 20242, 20243)
     ano                  INTEGER NOT NULL,
-    mes                  INTEGER NOT NULL,
-    nome_mes             VARCHAR(20) NOT NULL,
-    ano_mes              VARCHAR(7) NOT NULL, -- '2025-01'
-    quadrimestre         INTEGER NOT NULL,    -- 1, 2 ou 3
-    nome_quadrimestre    VARCHAR(15) NOT NULL -- '1º Quadrimestre'
+    quadrimestre         INTEGER NOT NULL     -- 1, 2 ou 3
 );
 
 -- -----------------------------------------------------------------------------
 -- 2. DEMAIS DIMENSÕES
 -- -----------------------------------------------------------------------------
-CREATE TABLE dim_cliente (
-    sk_cliente           SERIAL PRIMARY KEY,
-    bk_id_cliente        INTEGER NOT NULL,
-    origem_fonte         VARCHAR(30) NOT NULL,
-    nome_cliente         VARCHAR(150) NOT NULL,
-    email                VARCHAR(150),
-    telefone             VARCHAR(30),
-    genero               VARCHAR(20),
-    estado_civil         VARCHAR(30),
-    data_nascimento      DATE
+CREATE TABLE dim_estado_civil (
+    sk_estado_civil      SERIAL PRIMARY KEY,
+    estado_civil         VARCHAR(50) NOT NULL UNIQUE
 );
 
 CREATE TABLE dim_produto (
     sk_produto           SERIAL PRIMARY KEY,
-    bk_id_produto        INTEGER NOT NULL,
-    origem_fonte         VARCHAR(30) NOT NULL,
+    id_origem            INTEGER,
     nome_produto         VARCHAR(150) NOT NULL,
-    categoria            VARCHAR(100) NOT NULL,
-    preco_referencia     NUMERIC(12,2)
+    categoria            VARCHAR(100) NOT NULL
 );
 
 CREATE TABLE dim_loja (
@@ -51,14 +38,14 @@ CREATE TABLE dim_loja (
 
 CREATE TABLE fato_vendas (
     sk_tempo             INTEGER NOT NULL REFERENCES dim_tempo(sk_tempo),
-    sk_cliente            INTEGER NOT NULL REFERENCES dim_cliente(sk_cliente),
-    sk_produto            INTEGER NOT NULL REFERENCES dim_produto(sk_produto),
-    sk_loja               INTEGER NOT NULL REFERENCES dim_loja(sk_loja),
-    quantidade_vendida    INTEGER NOT NULL,
-    valor_total_venda     NUMERIC(12,2) NOT NULL,
+    sk_estado_civil      INTEGER NOT NULL REFERENCES dim_estado_civil(sk_estado_civil),
+    sk_produto           INTEGER NOT NULL REFERENCES dim_produto(sk_produto),
+    sk_loja              INTEGER NOT NULL REFERENCES dim_loja(sk_loja),
+    quantidade_vendida   INTEGER NOT NULL,
+    valor_total_venda    NUMERIC(12,2) NOT NULL,
 
     CONSTRAINT pk_fato_vendas
-        PRIMARY KEY (sk_tempo, sk_cliente, sk_produto, sk_loja)
+        PRIMARY KEY (sk_tempo, sk_estado_civil, sk_produto, sk_loja)
 );
 
 CREATE TABLE fato_vendas_concorrente (
@@ -73,9 +60,9 @@ CREATE TABLE fato_vendas_concorrente (
 -- 4. ÍNDICES
 -- -----------------------------------------------------------------------------
 
-CREATE INDEX idx_fv_tempo   ON fato_vendas(sk_tempo);
-CREATE INDEX idx_fv_cliente ON fato_vendas(sk_cliente);
-CREATE INDEX idx_fv_produto ON fato_vendas(sk_produto);
-CREATE INDEX idx_fv_loja    ON fato_vendas(sk_loja);
+CREATE INDEX idx_fv_tempo        ON fato_vendas(sk_tempo);
+CREATE INDEX idx_fv_estado_civil ON fato_vendas(sk_estado_civil);
+CREATE INDEX idx_fv_produto      ON fato_vendas(sk_produto);
+CREATE INDEX idx_fv_loja         ON fato_vendas(sk_loja);
 
 CREATE INDEX idx_fvc_tempo   ON fato_vendas_concorrente(sk_tempo);

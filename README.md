@@ -38,8 +38,8 @@ flowchart TD
     end
 
     subgraph DW ["3. Data Warehouse (PostgreSQL petshop_dw:5434)"]
-        DIM["Dimensões:<br>• dim_tempo (Mensal / Quadrimestral)<br>• dim_cliente<br>• dim_produto<br>• dim_loja"]
-        FATO["Fatos:<br>• fato_vendas (Agregada Mensal)<br>• fato_vendas_concorrente"]
+        DIM["Dimensões:<br>• dim_tempo (Quadrimestral / Anual)<br>• dim_estado_civil<br>• dim_produto<br>• dim_loja"]
+        FATO["Fatos:<br>• fato_vendas (Agregada Quadrimestral)<br>• fato_vendas_concorrente"]
     end
 
     S1 -->|etl_salvador.py| STG_TAB
@@ -83,12 +83,12 @@ Script responsável pela qualidade dos dados antes do envio ao Data Warehouse:
 
 ### 4. Data Warehouse (`dw/`)
 Modelagem dimensional implementada em **PostgreSQL** (Porta `5434`, database `petshop_dw`):
-* **`dim_tempo`**: Granularidade mensal baseada na chave substituta `sk_tempo` (`YYYYMM`), contendo atributos analíticos como ano, mês, nome do mês, ano-mês e quadrimestre.
-* **`dim_cliente`**: Cadastro unificado de clientes das filiais com surrogate key e controle da origem de extração (`origem_fonte`).
-* **`dim_produto`**: Catálogo unificado de produtos com preços de referência.
+* **`dim_tempo`**: Granularidade estritamente quadrimestral e anual baseada na chave substituta `sk_tempo` (`YYYYQ`), contendo apenas `ano` e `quadrimestre`.
+* **`dim_estado_civil`**: Dimensão contendo apenas os estados civis normalizados (ex: Casado(a), Solteiro(a), etc.), atendendo estritamente à análise gerencial de vendas por estado civil sem reter dados individuais (minimização do DW e LGPD).
+* **`dim_produto`**: Catálogo único e agregado de produtos unificados entre todas as filiais com `id_origem`, nome e categoria (sem preços de referência ou redundância de origem).
 * **`dim_loja`**: Dimensão com as unidades físicas e sistemas de origem.
-* **`fato_vendas`**: Métricas de faturamento e volume vendidas agregadas mensalmente por cliente, produto e loja.
-* **`fato_vendas_concorrente`**: Série temporal do faturamento do concorrente para análises de *market share*.
+* **`fato_vendas`**: Métricas de faturamento e volume vendidas agregadas por quadrimestre/ano, estado civil, produto e loja.
+* **`fato_vendas_concorrente`**: Série temporal do faturamento do concorrente agregada por quadrimestre/ano para comparativo direto de *market share*.
 
 ---
 
@@ -169,6 +169,14 @@ python etl_feira.py
 ```bash
 python transform.py
 ```
+
+### 6. Executar a Carga no Data Warehouse (Load)
+Navegue até a pasta `dw/` e execute o script de carga agregada:
+```bash
+cd ../dw
+python load_dw.py
+```
+
 
 ---
 

@@ -1,6 +1,7 @@
 import psycopg2
 from psycopg2.extras import execute_values
 import oracledb
+import unicodedata
 
 # ============================================================
 # CONFIGURAÇÕES DE CONEXÃO
@@ -44,7 +45,7 @@ print("✓ Conectado ao PostgreSQL Data Warehouse (petshop_dw)")
 print("\n--- LIMPEZA DO DW ---")
 pg_cur.execute("""
     TRUNCATE fato_vendas, fato_vendas_concorrente, 
-             dim_tempo, dim_cliente, dim_produto, dim_loja 
+             dim_tempo, dim_estado_civil, dim_produto, dim_loja 
     RESTART IDENTITY CASCADE;
 """)
 pg_conn.commit()
@@ -53,33 +54,20 @@ print("✓ Tabelas do DW truncadas com sucesso.")
 
 # ============================================================
 # 3. CARGA DA DIMENSÃO TEMPO (dim_tempo)
-# Granularidade mensal cobrindo 2024 e 2025 (24 meses)
-# Inclui ano e quadrimestre para responder aos requisitos de BI
+# Granularidade Quadrimestral e Anual cobrindo 2024 e 2025 (6 registros)
+# SK_TEMPO no formato YYYYQ (ex: 20241 para 1º Quadrimestre/2024)
 # ============================================================
 
-print("\n--- CARGA: dim_tempo ---")
-
-meses_nomes = [
-    "Janeiro", "Fevereiro", "Março", "Abril",
-    "Maio", "Junho", "Julho", "Agosto",
-    "Setembro", "Outubro", "Novembro", "Dezembro"
-]
+print("\n--- CARGA: dim_tempo (QUADRIMESTRAL) ---")
 
 tempo_records = []
 for ano in [2024, 2025]:
-    for mes in range(1, 13):
-        sk_tempo = ano * 100 + mes
-        nome_mes = meses_nomes[mes - 1]
-        ano_mes = f"{ano}-{mes:02d}"
-        quadrimestre = (mes - 1) // 4 + 1
-        nome_quadrimestre = f"{quadrimestre}º Quadrimestre"
-        
-        tempo_records.append((
-            sk_tempo, ano, mes, nome_mes, ano_mes, quadrimestre, nome_quadrimestre
-        ))
+    for quad in [1, 2, 3]:
+        sk_tempo = ano * 10 + quad
+        tempo_records.append((sk_tempo, ano, quad))
 
 execute_values(pg_cur, """
-    INSERT INTO dim_tempo (sk_tempo, ano, mes, nome_mes, ano_mes, quadrimestre, nome_quadrimestre)
+    INSERT INTO dim_tempo (sk_tempo, ano, quadrimestre)
     VALUES %s
 """, tempo_records)
 pg_conn.commit()
@@ -112,11 +100,11 @@ print(f"✓ {len(loja_map)} lojas carregadas em dim_loja: {loja_map}")
 
 
 # ============================================================
-# 5. CARGA DA DIMENSÃO CLIENTE (dim_cliente)
-# Mapeia clientes das 3 fontes usando bk_id_cliente e origem_fonte
+# 5. CARGA DA DIMENSÃO ESTADO CIVIL (dim_estado_civil)
+# Mapeia apenas os estados civis distintos padronizados
 # ============================================================
 
-print("\n--- CARGA: dim_cliente ---")
+print("\n--- CARGA: dim_estado_civil ---")
 
 fontes_clientes = [
     ("Salvador", "STG_SALVADOR_CLIENTES"),
@@ -124,45 +112,54 @@ fontes_clientes = [
     ("Feira",    "STG_FEIRA_CLIENTES")
 ]
 
-total_clientes = 0
+cliente_estado_civil = {}
+estados_civis_set = set()
+
 for origem, tabela in fontes_clientes:
     oracle_cur.execute(f"""
-        SELECT ID_CLIENTE, NOME, EMAIL, TELEFONE, SEXO, ESTADO_CIVIL, DATA_NASCIMENTO
+        SELECT ID_CLIENTE, ESTADO_CIVIL
         FROM {tabela}
         ORDER BY ID_CLIENTE
     """)
-    rows = oracle_cur.fetchall()
-    
-    dados_insercao = []
-    for r in rows:
-        bk_id, nome, email, tel, sexo, est_civil, dt_nasc = r
-        # Converte datetime do Oracle para date se aplicável
-        data_nascimento = dt_nasc.date() if dt_nasc else None
-        dados_insercao.append((
-            bk_id, origem, nome, email, tel, sexo, est_civil, data_nascimento
-        ))
-    
-    execute_values(pg_cur, """
-        INSERT INTO dim_cliente (bk_id_cliente, origem_fonte, nome_cliente, email, telefone, genero, estado_civil, data_nascimento)
-        VALUES %s
-    """, dados_insercao)
-    total_clientes += len(dados_insercao)
-    print(f"  [{origem}] {len(dados_insercao)} clientes inseridos.")
+    for bk_id, est_civil in oracle_cur.fetchall():
+        est_civil_clean = est_civil.strip() if est_civil else "Não Informado"
+        cliente_estado_civil[(bk_id, origem)] = est_civil_clean
+        estados_civis_set.add(est_civil_clean)
 
+# Inserção dos estados civis distintos
+dados_insercao_ec = [(ec,) for ec in sorted(estados_civis_set)]
+
+execute_values(pg_cur, """
+    INSERT INTO dim_estado_civil (estado_civil)
+    VALUES %s
+""", dados_insercao_ec)
 pg_conn.commit()
 
-# Mapa em memória: (bk_id_cliente, origem_fonte) -> sk_cliente
-pg_cur.execute("SELECT sk_cliente, bk_id_cliente, origem_fonte FROM dim_cliente")
-cliente_map = {(bk_id, origem): sk for sk, bk_id, origem in pg_cur.fetchall()}
-print(f"✓ Total em dim_cliente: {total_clientes} registros.")
+# Mapa: estado_civil -> sk_estado_civil
+pg_cur.execute("SELECT sk_estado_civil, estado_civil FROM dim_estado_civil")
+estado_civil_map = {ec: sk for sk, ec in pg_cur.fetchall()}
+
+# Mapa em memória para relacionar vendas: (bk_id_cliente, origem) -> sk_estado_civil
+cliente_sk_ec_map = {
+    chave: estado_civil_map[ec]
+    for chave, ec in cliente_estado_civil.items()
+}
+print(f"✓ Total em dim_estado_civil: {len(dados_insercao_ec)} estados civis carregados: {sorted(estados_civis_set)}")
 
 
 # ============================================================
 # 6. CARGA DA DIMENSÃO PRODUTO (dim_produto)
-# Mapeia produtos das 3 fontes usando bk_id_produto e origem_fonte
+# Unifica e agrega o catálogo de produtos das 3 filiais (sem preço de referência)
+# Mantém o id_origem e consolida variações textuais
 # ============================================================
 
-print("\n--- CARGA: dim_produto ---")
+print("\n--- CARGA: dim_produto (AGREGADA) ---")
+
+def normalizar_texto_chave(txt):
+    if not txt:
+        return ""
+    s = unicodedata.normalize("NFD", txt.strip().title())
+    return "".join(c for c in s if unicodedata.category(c) != "Mn")
 
 fontes_produtos = [
     ("Salvador", "STG_SALVADOR_PRODUTOS"),
@@ -170,43 +167,61 @@ fontes_produtos = [
     ("Feira",    "STG_FEIRA_PRODUTOS")
 ]
 
-total_produtos = 0
+produtos_agregados = {}
+produto_chave_origem = {}
+
 for origem, tabela in fontes_produtos:
     oracle_cur.execute(f"""
-        SELECT ID_PRODUTO, NOME_PRODUTO, CATEGORIA, PRECO
+        SELECT ID_PRODUTO, NOME_PRODUTO, CATEGORIA
         FROM {tabela}
         ORDER BY ID_PRODUTO
     """)
-    rows = oracle_cur.fetchall()
-    
-    dados_insercao = []
-    for r in rows:
-        bk_id, nome, categoria, preco = r
-        dados_insercao.append((bk_id, origem, nome, categoria, preco))
+    for bk_id, nome, categoria in oracle_cur.fetchall():
+        chave = normalizar_texto_chave(nome)
+        produto_chave_origem[(bk_id, origem)] = chave
         
-    execute_values(pg_cur, """
-        INSERT INTO dim_produto (bk_id_produto, origem_fonte, nome_produto, categoria, preco_referencia)
-        VALUES %s
-    """, dados_insercao)
-    total_produtos += len(dados_insercao)
-    print(f"  [{origem}] {len(dados_insercao)} produtos inseridos.")
+        if chave not in produtos_agregados:
+            nome_limpo = " ".join(nome.strip().title().split())
+            cat_limpa = " ".join(categoria.strip().title().split()) if categoria else "Outros"
+            produtos_agregados[chave] = {
+                "id_origem": bk_id,
+                "nome_produto": nome_limpo,
+                "categoria": cat_limpa
+            }
 
+dados_insercao_produtos = [
+    (info["id_origem"], info["nome_produto"], info["categoria"])
+    for info in produtos_agregados.values()
+]
+
+execute_values(pg_cur, """
+    INSERT INTO dim_produto (id_origem, nome_produto, categoria)
+    VALUES %s
+""", dados_insercao_produtos)
 pg_conn.commit()
 
-# Mapa em memória: (bk_id_produto, origem_fonte) -> sk_produto
-pg_cur.execute("SELECT sk_produto, bk_id_produto, origem_fonte FROM dim_produto")
-produto_map = {(bk_id, origem): sk for sk, bk_id, origem in pg_cur.fetchall()}
-print(f"✓ Total em dim_produto: {total_produtos} registros.")
+# Mapa em memória: nome_produto -> sk_produto
+pg_cur.execute("SELECT sk_produto, nome_produto FROM dim_produto")
+sk_por_nome = {nome: sk for sk, nome in pg_cur.fetchall()}
+
+# Mapa final: (bk_id_produto, origem) -> sk_produto
+produto_map = {}
+for chave_prod, info in produtos_agregados.items():
+    sk = sk_por_nome[info["nome_produto"]]
+    for (bk_id, origem), ch in produto_chave_origem.items():
+        if ch == chave_prod:
+            produto_map[(bk_id, origem)] = sk
+
+print(f"✓ Total em dim_produto: {len(dados_insercao_produtos)} produtos únicos agregados.")
 
 
 # ============================================================
 # 7. CARGA DA TABELA FATO DE VENDAS (fato_vendas)
-# Agregação por: sk_tempo (mês), sk_cliente, sk_produto, sk_loja
-# Esta agregação evita inflar o DW com transações puras, mantendo
-# suporte total a análises por Mês, Quadrimestre e Ano.
+# Agregação por: sk_tempo (quadrimestre), sk_estado_civil, sk_produto, sk_loja
+# Granularidade quadrimestral e anual, minimizando o DW
 # ============================================================
 
-print("\n--- CARGA: fato_vendas (AGREGADA) ---")
+print("\n--- CARGA: fato_vendas (AGREGADA QUADRIMESTRAL) ---")
 
 fato_registros = {}
 
@@ -214,7 +229,8 @@ fato_registros = {}
 sk_loja_ssa = loja_map["Salvador"]
 oracle_cur.execute("""
     SELECT 
-        TO_CHAR(v.DATA_VENDA, 'YYYYMM') AS SK_TEMPO,
+        EXTRACT(YEAR FROM v.DATA_VENDA) AS ANO,
+        EXTRACT(MONTH FROM v.DATA_VENDA) AS MES,
         v.ID_CLIENTE,
         i.ID_PRODUTO,
         i.QUANTIDADE,
@@ -222,11 +238,12 @@ oracle_cur.execute("""
     FROM STG_SALVADOR_VENDAS v
     JOIN STG_SALVADOR_ITENS_VENDA i ON v.ID_VENDA = i.ID_VENDA
 """)
-for sk_t_str, bk_cli, bk_prod, qtd, vlr in oracle_cur.fetchall():
-    sk_tempo = int(sk_t_str)
-    sk_cli = cliente_map.get((bk_cli, "Salvador"))
+for ano, mes, bk_cli, bk_prod, qtd, vlr in oracle_cur.fetchall():
+    quad = (int(mes) - 1) // 4 + 1
+    sk_tempo = int(ano) * 10 + quad
+    sk_ec = cliente_sk_ec_map.get((bk_cli, "Salvador"))
     sk_prod = produto_map.get((bk_prod, "Salvador"))
-    chave = (sk_tempo, sk_cli, sk_prod, sk_loja_ssa)
+    chave = (sk_tempo, sk_ec, sk_prod, sk_loja_ssa)
     
     if chave not in fato_registros:
         fato_registros[chave] = [0, 0.0]
@@ -239,7 +256,8 @@ print(f"  [Salvador] Processado.")
 sk_loja_ita = loja_map["Itabuna"]
 oracle_cur.execute("""
     SELECT 
-        TO_CHAR(v.DATA_VENDA, 'YYYYMM') AS SK_TEMPO,
+        EXTRACT(YEAR FROM v.DATA_VENDA) AS ANO,
+        EXTRACT(MONTH FROM v.DATA_VENDA) AS MES,
         v.ID_CLIENTE,
         i.ID_PRODUTO,
         i.QUANTIDADE,
@@ -247,11 +265,12 @@ oracle_cur.execute("""
     FROM STG_ITABUNA_VENDAS v
     JOIN STG_ITABUNA_ITENS_VENDA i ON v.ID_VENDA = i.ID_VENDA
 """)
-for sk_t_str, bk_cli, bk_prod, qtd, vlr in oracle_cur.fetchall():
-    sk_tempo = int(sk_t_str)
-    sk_cli = cliente_map.get((bk_cli, "Itabuna"))
+for ano, mes, bk_cli, bk_prod, qtd, vlr in oracle_cur.fetchall():
+    quad = (int(mes) - 1) // 4 + 1
+    sk_tempo = int(ano) * 10 + quad
+    sk_ec = cliente_sk_ec_map.get((bk_cli, "Itabuna"))
     sk_prod = produto_map.get((bk_prod, "Itabuna"))
-    chave = (sk_tempo, sk_cli, sk_prod, sk_loja_ita)
+    chave = (sk_tempo, sk_ec, sk_prod, sk_loja_ita)
     
     if chave not in fato_registros:
         fato_registros[chave] = [0, 0.0]
@@ -264,7 +283,8 @@ print(f"  [Itabuna] Processado.")
 sk_loja_fsa = loja_map["Feira de Santana"]
 oracle_cur.execute("""
     SELECT 
-        TO_CHAR(p.DATA_PEDIDO, 'YYYYMM') AS SK_TEMPO,
+        EXTRACT(YEAR FROM p.DATA_PEDIDO) AS ANO,
+        EXTRACT(MONTH FROM p.DATA_PEDIDO) AS MES,
         p.ID_CLIENTE,
         i.ID_PRODUTO,
         i.QUANTIDADE,
@@ -272,11 +292,12 @@ oracle_cur.execute("""
     FROM STG_FEIRA_PEDIDOS p
     JOIN STG_FEIRA_ITENS_PEDIDO i ON p.ID_PEDIDO = i.ID_PEDIDO
 """)
-for sk_t_str, bk_cli, bk_prod, qtd, vlr in oracle_cur.fetchall():
-    sk_tempo = int(sk_t_str)
-    sk_cli = cliente_map.get((bk_cli, "Feira"))
+for ano, mes, bk_cli, bk_prod, qtd, vlr in oracle_cur.fetchall():
+    quad = (int(mes) - 1) // 4 + 1
+    sk_tempo = int(ano) * 10 + quad
+    sk_ec = cliente_sk_ec_map.get((bk_cli, "Feira"))
     sk_prod = produto_map.get((bk_prod, "Feira"))
-    chave = (sk_tempo, sk_cli, sk_prod, sk_loja_fsa)
+    chave = (sk_tempo, sk_ec, sk_prod, sk_loja_fsa)
     
     if chave not in fato_registros:
         fato_registros[chave] = [0, 0.0]
@@ -292,7 +313,7 @@ fato_rows = [
 ]
 
 execute_values(pg_cur, """
-    INSERT INTO fato_vendas (sk_tempo, sk_cliente, sk_produto, sk_loja, quantidade_vendida, valor_total_venda)
+    INSERT INTO fato_vendas (sk_tempo, sk_estado_civil, sk_produto, sk_loja, quantidade_vendida, valor_total_venda)
     VALUES %s
 """, fato_rows, page_size=2000)
 pg_conn.commit()
@@ -302,10 +323,10 @@ print(f"✓ Total em fato_vendas: {len(fato_rows)} registros agregados carregado
 
 # ============================================================
 # 8. CARGA DA TABELA FATO DO CONCORRENTE (fato_vendas_concorrente)
-# Mapeamento dos meses para sk_tempo
+# Mapeamento agrupado por quadrimestre (sk_tempo: YYYYQ)
 # ============================================================
 
-print("\n--- CARGA: fato_vendas_concorrente ---")
+print("\n--- CARGA: fato_vendas_concorrente (QUADRIMESTRAL) ---")
 
 mapa_meses_sigla = {
     "jan": 1, "fev": 2, "mar": 3, "abr": 4,
@@ -320,12 +341,18 @@ oracle_cur.execute("""
 """)
 rows_concorrente = oracle_cur.fetchall()
 
-concorrente_rows = []
+concorrente_agg = {}
 for ano, mes_sigla, valor in rows_concorrente:
     num_mes = mapa_meses_sigla.get(mes_sigla.strip().lower())
     if num_mes:
-        sk_tempo = ano * 100 + num_mes
-        concorrente_rows.append((sk_tempo, float(valor)))
+        quad = (num_mes - 1) // 4 + 1
+        sk_tempo = ano * 10 + quad
+        concorrente_agg[sk_tempo] = concorrente_agg.get(sk_tempo, 0.0) + float(valor)
+
+concorrente_rows = [
+    (sk, round(v, 2))
+    for sk, v in sorted(concorrente_agg.items())
+]
 
 execute_values(pg_cur, """
     INSERT INTO fato_vendas_concorrente (sk_tempo, valor)
@@ -333,7 +360,7 @@ execute_values(pg_cur, """
 """, concorrente_rows)
 pg_conn.commit()
 
-print(f"✓ Total em fato_vendas_concorrente: {len(concorrente_rows)} registros carregados.")
+print(f"✓ Total em fato_vendas_concorrente: {len(concorrente_rows)} registros quadrimestrais carregados.")
 
 
 # ============================================================
@@ -345,7 +372,7 @@ print("LOAD CONCLUÍDO COM SUCESSO!")
 print("=" * 70)
 
 resumo_tabelas = [
-    "dim_tempo", "dim_loja", "dim_cliente", "dim_produto", 
+    "dim_tempo", "dim_loja", "dim_estado_civil", "dim_produto", 
     "fato_vendas", "fato_vendas_concorrente"
 ]
 
