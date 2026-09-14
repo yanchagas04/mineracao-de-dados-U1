@@ -1,36 +1,30 @@
+import sys
+from pathlib import Path
 import psycopg2
 import oracledb
 
+# Resolução do caminho para importação de config
+current_dir = Path(__file__).resolve().parent
+src_dir = current_dir.parent if current_dir.name != "src" else current_dir
+if str(src_dir) not in sys.path:
+    sys.path.insert(0, str(src_dir))
+
+import config
 
 # ============================================================
 # CONEXÃO POSTGRESQL - ITABUNA
 # ============================================================
 
-postgres_conn = psycopg2.connect(
-    host="localhost",
-    port=5435,
-    database="petshop_itabuna",
-    user="postgres",
-    password="cimatec"
-)
-
+postgres_conn = psycopg2.connect(**config.PG_ITABUNA_CONFIG)
 postgres_cursor = postgres_conn.cursor()
-
 print("Conectado ao PostgreSQL Itabuna com sucesso!")
 
-
 # ============================================================
-# CONEXÃO ORACLE - STAGING
+# CONEXÃO ORACLE - STAGING (C##SA)
 # ============================================================
 
-oracle_conn = oracledb.connect(
-    user="C##SA",
-    password="cimatec",
-    dsn="localhost:1521/XE"
-)
-
+oracle_conn = oracledb.connect(**config.ORACLE_SA_CONFIG)
 oracle_cursor = oracle_conn.cursor()
-
 print("Conectado ao Oracle Staging com sucesso!")
 
 

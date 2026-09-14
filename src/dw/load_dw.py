@@ -1,8 +1,9 @@
+import sys
+from pathlib import Path
 import psycopg2
 from psycopg2.extras import execute_values
 import oracledb
 import unicodedata
-import sys
 
 if sys.stdout.encoding != 'utf-8':
     try:
@@ -10,23 +11,13 @@ if sys.stdout.encoding != 'utf-8':
     except Exception:
         pass
 
-# ============================================================
-# CONFIGURAÇÕES DE CONEXÃO
-# ============================================================
+# Resolução do caminho para importação de config
+current_dir = Path(__file__).resolve().parent
+src_dir = current_dir.parent if current_dir.name != "src" else current_dir
+if str(src_dir) not in sys.path:
+    sys.path.insert(0, str(src_dir))
 
-ORACLE_CONFIG = {
-    "user": "C##SA",
-    "password": "cimatec",
-    "dsn": "localhost:1521/XE"
-}
-
-POSTGRES_DW_CONFIG = {
-    "host": "localhost",
-    "port": 5434,
-    "database": "petshop_dw",
-    "user": "postgres",
-    "password": "cimatec"
-}
+import config
 
 print("=" * 70)
 print("INICIANDO PROCESSO DE LOAD NO DATA WAREHOUSE (POSTGRESQL)")
@@ -36,11 +27,11 @@ print("=" * 70)
 # 1. CONEXÕES
 # ============================================================
 
-oracle_conn = oracledb.connect(**ORACLE_CONFIG)
+oracle_conn = oracledb.connect(**config.ORACLE_SA_CONFIG)
 oracle_cur = oracle_conn.cursor()
 print("✓ Conectado ao Oracle Staging (C##SA)")
 
-pg_conn = psycopg2.connect(**POSTGRES_DW_CONFIG)
+pg_conn = psycopg2.connect(**config.PG_DW_CONFIG)
 pg_cur = pg_conn.cursor()
 print("✓ Conectado ao PostgreSQL Data Warehouse (petshop_dw)")
 

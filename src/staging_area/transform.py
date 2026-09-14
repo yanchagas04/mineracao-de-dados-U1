@@ -1,17 +1,22 @@
+import sys
+from pathlib import Path
 import oracledb
 import re
 import unicodedata
+
+# Resolução do caminho para importação de config
+current_dir = Path(__file__).resolve().parent
+src_dir = current_dir.parent if current_dir.name != "src" else current_dir
+if str(src_dir) not in sys.path:
+    sys.path.insert(0, str(src_dir))
+
+import config
 
 # ============================================================
 # CONEXÃO COM ORACLE - STAGING (C##SA)
 # ============================================================
 
-conn = oracledb.connect(
-    user="C##SA",
-    password="cimatec",
-    dsn="localhost:1521/XE"
-)
-
+conn = oracledb.connect(**config.ORACLE_SA_CONFIG)
 cursor = conn.cursor()
 
 print("=" * 60)

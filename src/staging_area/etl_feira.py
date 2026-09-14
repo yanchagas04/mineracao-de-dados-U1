@@ -1,33 +1,25 @@
+import sys
+from pathlib import Path
 import oracledb
 
+# Resolução do caminho para importação de config
+current_dir = Path(__file__).resolve().parent
+src_dir = current_dir.parent if current_dir.name != "src" else current_dir
+if str(src_dir) not in sys.path:
+    sys.path.insert(0, str(src_dir))
+
+import config
 
 # ============================================================
-# CONEXÃO COM ORACLE - FONTE (C##FEIRA)
+# CONEXÃO COM ORACLE - FONTE (C##FEIRA) E STAGING (C##SA)
 # ============================================================
 
-source_conn = oracledb.connect(
-    user="C##FEIRA",
-    password="cimatec",
-    dsn="localhost:1521/XE"
-)
-
+source_conn = oracledb.connect(**config.ORACLE_FEIRA_CONFIG)
 source_cursor = source_conn.cursor()
-
 print("Conectado ao Oracle Feira (fonte) com sucesso!")
 
-
-# ============================================================
-# CONEXÃO COM ORACLE - STAGING (C##SA)
-# ============================================================
-
-oracle_conn = oracledb.connect(
-    user="C##SA",
-    password="cimatec",
-    dsn="localhost:1521/XE"
-)
-
+oracle_conn = oracledb.connect(**config.ORACLE_SA_CONFIG)
 oracle_cursor = oracle_conn.cursor()
-
 print("Conectado ao Oracle Staging (C##SA) com sucesso!")
 
 

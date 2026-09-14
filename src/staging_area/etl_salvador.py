@@ -1,50 +1,25 @@
+import sys
+from pathlib import Path
 import oracledb
 
+# Resolução do caminho para importação de config
+current_dir = Path(__file__).resolve().parent
+src_dir = current_dir.parent if current_dir.name != "src" else current_dir
+if str(src_dir) not in sys.path:
+    sys.path.insert(0, str(src_dir))
+
+import config
 
 # ============================================================
-# CONFIGURAÇÃO
+# CONEXÕES - FONTE (C##PETSHOP) E STAGING (C##SA)
 # ============================================================
 
-ORACLE_HOST = "localhost"
-ORACLE_PORT = 1521
-ORACLE_SERVICE = "XE"
-
-SOURCE_USER = "C##PETSHOP"
-SOURCE_PASSWORD = "pet"
-
-STAGING_USER = "C##SA"
-STAGING_PASSWORD = "cimatec"
-
-
-# ============================================================
-# CONEXÃO - FONTE (C##PETSHOP)
-# ============================================================
-
-dsn = f"{ORACLE_HOST}:{ORACLE_PORT}/{ORACLE_SERVICE}"
-
-source_conn = oracledb.connect(
-    user=SOURCE_USER,
-    password=SOURCE_PASSWORD,
-    dsn=dsn
-)
-
+source_conn = oracledb.connect(**config.ORACLE_PETSHOP_CONFIG)
 source_cursor = source_conn.cursor()
-
 print("Conectado ao Oracle Salvador (fonte) com sucesso!")
 
-
-# ============================================================
-# CONEXÃO - STAGING (C##SA)
-# ============================================================
-
-conn = oracledb.connect(
-    user=STAGING_USER,
-    password=STAGING_PASSWORD,
-    dsn=dsn
-)
-
+conn = oracledb.connect(**config.ORACLE_SA_CONFIG)
 cursor = conn.cursor()
-
 print("Conectado ao Oracle Staging (C##SA) com sucesso!")
 
 
