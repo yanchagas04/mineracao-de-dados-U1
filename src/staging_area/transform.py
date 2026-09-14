@@ -68,25 +68,44 @@ def padronizar_sexo(valor):
 def padronizar_estado_civil(valor):
     """
     Normaliza variações de estado civil.
-    Saídas: Solteiro(a), Casado(a), Divorciado(a), Viúvo(a), Outro, Não Informado.
+    Saídas: Solteiro(a), Casado(a), Divorciado(a), Viúvo(a), União Estável, Não Informado.
     """
     if valor is None:
         return "Não Informado"
-    v = unicodedata.normalize("NFD", valor.strip().lower())
+    v = unicodedata.normalize("NFD", str(valor).strip().lower())
     v = "".join(c for c in v if unicodedata.category(c) != "Mn")
     mapa = {
-        "solteiro":       "Solteiro(a)",
-        "solteira":       "Solteiro(a)",
-        "casado":         "Casado(a)",
-        "casada":         "Casado(a)",
-        "divorciado":     "Divorciado(a)",
-        "divorciada":     "Divorciado(a)",
-        "separado":       "Divorciado(a)",
-        "separada":       "Divorciado(a)",
-        "viuvo":          "Viúvo(a)",
-        "viuva":          "Viúvo(a)",
-        "uniao estavel":  "Casado(a)",
-        "uniao_estavel":  "Casado(a)",
+        # Solteiro
+        "s":                "Solteiro(a)",
+        "solteiro":         "Solteiro(a)",
+        "solteira":         "Solteiro(a)",
+        "solteiro(a)":      "Solteiro(a)",
+        # Casado
+        "c":                "Casado(a)",
+        "casado":           "Casado(a)",
+        "casada":           "Casado(a)",
+        "casado(a)":        "Casado(a)",
+        # Divorciado
+        "d":                "Divorciado(a)",
+        "divorciado":       "Divorciado(a)",
+        "divorciada":       "Divorciado(a)",
+        "divorciado(a)":    "Divorciado(a)",
+        "separado":         "Divorciado(a)",
+        "separada":         "Divorciado(a)",
+        "separado(a)":      "Divorciado(a)",
+        # Viúvo
+        "v":                "Viúvo(a)",
+        "viuvo":            "Viúvo(a)",
+        "viuva":            "Viúvo(a)",
+        "viuvo(a)":         "Viúvo(a)",
+        # União Estável
+        "u":                "União Estável",
+        "uniao estavel":    "União Estável",
+        "uniao_estavel":    "União Estável",
+        "uniao estavel(a)": "União Estável",
+        # Não Informado
+        "nao informado":    "Não Informado",
+        "nao informado(a)": "Não Informado",
     }
     return mapa.get(v, "Outro")
 
